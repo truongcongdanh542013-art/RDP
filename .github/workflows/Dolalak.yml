@@ -1,0 +1,116 @@
+name: 🚀 LongVPS RDP Menu
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: '🕐 Thời gian sử dụng'
+        required: false
+        default: '5h40m'
+        type: choice
+        options:
+        - '1h'
+        - '3h'
+        - '5h40m'
+
+jobs:
+  Premium-RDP-Setup:
+    runs-on: windows-latest
+    timeout-minutes: 340
+
+    steps:
+      # 1️⃣ TẠO USER RDP
+      - name: 👤 TẠO USER PREMIUM
+        run: |
+          $username = "LongDay2203"
+          function New-Pass { 
+              $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+              -join ((1..8) | ForEach-Object { $chars[(Get-Random -Minimum 0 -Maximum $chars.Length)] })
+          }
+          $password = New-Pass
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+
+          Remove-LocalUser -Name $username -ErrorAction SilentlyContinue
+          New-LocalUser -Name $username -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member $username
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $username
+          Write-Host "RDP_USER=$username" >> $env:GITHUB_ENV
+          Write-Host "RDP_PASS=$password" >> $env:GITHUB_ENV
+          $password | Out-File "$env:TEMP\rdp_password.txt" -Force
+
+      # 2️⃣ CÀI TAILSCALE
+      - name: 🌐 CÀI TAILSCALE
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          $msiPath = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile $msiPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$msiPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $msiPath -Force
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=$env:TAILSCALE_AUTH_KEY --hostname=LongDay-$env:GITHUB_RUN_ID --accept-routes --accept-dns --reset
+          $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          echo $ip > "$env:TEMP\tailscale_ip.txt"
+          echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
+
+      # 3️⃣ TẠO SCRIPT MENU VÀ COPY VÀO STARTUP
+      - name: 🖥️ CÀI RDP MENU
+        run: |
+          $menuScript = @"
+# ===== LONGDAY RDP MENU =====
+Clear-Host
+\$RDP_USER = 'LongDay2203'
+\$TAILSCALE_IP = (Get-Content '$env:TEMP\tailscale_ip.txt' -ErrorAction SilentlyContinue)
+\$RDP_PASS = (Get-Content '$env:TEMP\rdp_password.txt' -ErrorAction SilentlyContinue)
+\$START_TIME = Get-Date
+\$TOTAL_MINUTES = 340
+
+function Show-Menu {
+    Clear-Host
+    Write-Host '======= LONGDAY RDP MENU =======' -ForegroundColor Cyan
+    Write-Host "User: \$RDP_USER | IP: \$TAILSCALE_IP" -ForegroundColor Yellow
+    Write-Host "Password: \$RDP_PASS" -ForegroundColor Yellow
+    \$remain = \$START_TIME.AddMinutes(\$TOTAL_MINUTES) - (Get-Date)
+    Write-Host ("Time left: {0}h {1}m" -f [math]::Max(0,[math]::Floor(\$remain.TotalHours)), [math]::Max(0,[math]::Floor(\$remain.TotalMinutes % 60))) -ForegroundColor Green
+    Write-Host ""
+    Write-Host "1️⃣  Cài NodeJS" -ForegroundColor Cyan
+    Write-Host "2️⃣  Cài Python" -ForegroundColor Cyan
+    Write-Host "3️⃣  Cài Docker" -ForegroundColor Cyan
+    Write-Host "4️⃣  Reset User / Đổi mật khẩu" -ForegroundColor Cyan
+    Write-Host "5️⃣  Boost Network" -ForegroundColor Cyan
+    Write-Host "6️⃣  Check IP + Session info" -ForegroundColor Cyan
+    Write-Host "7️⃣  Cleanup session / Dọn temp" -ForegroundColor Cyan
+    Write-Host "0️⃣  Exit" -ForegroundColor Red
+    Write-Host "===============================" -ForegroundColor Cyan
+}
+
+function Process-Choice {
+    param([string]\$choice)
+    switch (\$choice) {
+        "1" { choco install nodejs-lts -y; Pause }
+        "2" { choco install python -y; Pause }
+        "3" { choco install docker-desktop -y; Pause }
+        "4" { \$newPass = Read-Host "Nhập mật khẩu mới"; \$securePass = ConvertTo-SecureString \$newPass -AsPlainText -Force; Set-LocalUser -Name \$RDP_USER -Password \$securePass; \$newPass | Out-File '$env:TEMP\rdp_password.txt' -Force; Pause }
+        "5" { reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Psched" /v "NonBestEffortLimit" /t REG_DWORD /d 0 /f; Pause }
+        "6" { Write-Host "IP: \$TAILSCALE_IP | User: \$RDP_USER | Pass: \$RDP_PASS"; Pause }
+        "7" { Remove-Item '$env:TEMP\rdp_password.txt' -ErrorAction SilentlyContinue; Pause }
+        "0" { exit }
+        default { Write-Host "❌ Không hợp lệ!"; Pause }
+    }
+}
+
+do { Show-Menu; \$c = Read-Host "Chọn 1-7 hoặc 0"; Process-Choice \$c } while (\$true)
+"@
+
+          $path = "C:\Users\LongDay2203\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\rdp-menu.ps1"
+          $menuScript | Out-File -FilePath $path -Encoding UTF8 -Force
+
+      # 4️⃣ HIỂN THỊ THÔNG TIN KẾT NỐI
+      - name: 🎉 THÔNG TIN RDP
+        run: |
+          $user = $env:RDP_USER
+          $pass = $env:RDP_PASS
+          $ip = $env:TAILSCALE_IP
+          Write-Host "🎯 RDP USER: $user" -ForegroundColor Green
+          Write-Host "🎯 PASSWORD: $pass" -ForegroundColor Green
+          Write-Host "🌐 IP Tailscale: $ip" -ForegroundColor Green
+          Write-Host "🔗 Khi login RDP, menu sẽ tự bật!" -ForegroundColor Cyan
