@@ -1,0 +1,161 @@
+name: 🚀 LongVPS 
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: '🕐 Thời gian sử dụng'
+        required: false
+        default: '5h40m'
+        type: choice
+        options:
+        - '1h'
+        - '3h' 
+        - '5h40m'
+
+jobs:
+  Premium-RDP-Setup:
+    runs-on: windows-latest
+    timeout-minutes: 340
+    
+    steps:
+      # BANNER CHÀO MỪNG
+      - name: 🎯 KHỞI ĐỘNG HỆ THỐNG
+        run: |
+          Write-Host ""
+          Write-Host "🤖 Longday SERVER" -ForegroundColor Yellow
+          Write-Host "⚡ Powered by AIL" -ForegroundColor Green
+          Write-Host "🕒 Thời gian: ${{ github.event.inputs.duration }}" -ForegroundColor Magenta
+          Write-Host ""
+          $frames = @('⣾','⣽','⣻','⢿','⡿','⣟','⣯','⣷')
+          for($i=0; $i -lt 10; $i++) {
+            Write-Host "`r🚀 Đang khởi tạo hệ thống... $($frames[$i % 8])" -NoNewline -ForegroundColor Blue
+            Start-Sleep -Milliseconds 100
+          }
+          Write-Host "`r✅ Hệ thống đã sẵn sàng!                    " -ForegroundColor Green
+
+      # CẤU HÌNH HỆ THỐNG
+      - name: 🔧 CẤU HÌNH HỆ THỐNG
+        run: |
+          Write-Host ""
+          Write-Host "🛠️  ĐANG CẤU HÌNH HỆ THỐNG" -ForegroundColor Yellow
+          $steps = @(
+              @{Name="Bật Remote Desktop"; Script={ Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force }},
+              @{Name="Tắt xác thực mạng"; Script={ Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force }},
+              @{Name="Cấu hình bảo mật RDP"; Script={ Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force; Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force }},
+              @{Name="Mở port 3389 firewall"; Script={ netsh advfirewall firewall add rule name="RDP-Premium" dir=in action=allow protocol=TCP localport=3389 profile=any; netsh advfirewall firewall add rule name="RDP-Premium-Out" dir=out action=allow protocol=TCP localport=3389 profile=any }},
+              @{Name="Khởi động dịch vụ"; Script={ Set-Service -Name TermService -StartupType Automatic -ErrorAction SilentlyContinue; Set-Service -Name UmRdpService -StartupType Automatic -ErrorAction SilentlyContinue; Start-Service -Name TermService -ErrorAction SilentlyContinue; Start-Service -Name UmRdpService -ErrorAction SilentlyContinue }}
+          )
+          foreach($step in $steps) {
+              Write-Host "│ 📋 $($step.Name)..." -NoNewline -ForegroundColor White
+              try { & $step.Script; Write-Host "`r│ ✅ $($step.Name)" -ForegroundColor Green } 
+              catch { Write-Host "`r│ ⚠️  $($step.Name) - Đã bỏ qua lỗi nhỏ" -ForegroundColor Yellow }
+              Start-Sleep -Milliseconds 500
+          }
+          Write-Host "🎯 Cấu hình hoàn tất!" -ForegroundColor Green
+
+      # BOOST MẠNG
+      - name: 🚀 BOOST MẠNG – Unlock Bandwidth
+        run: |
+          Write-Host "🔧 Unlock 100% bandwidth (NonBestEffortLimit -> 0)" -ForegroundColor Yellow
+          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Psched" /v "NonBestEffortLimit" /t REG_DWORD /d 0 /f
+          Write-Host "✅ Đã unlock bandwidth" -ForegroundColor Green
+
+      # TẠO USER PREMIUM
+      - name: 👤 TẠO TÀI KHOẢN PREMIUM
+        run: |
+          Write-Host "👤 ĐANG TẠO TÀI KHOẢN PREMIUM" -ForegroundColor Yellow
+          function New-PremiumPassword {
+              $upper='ABCDEFGHJKLMNPQRSTUVWXYZ'; $lower='abcdefghijkmnpqrstuvwxyz'; $numbers='23456789'; $all=$upper+$lower+$numbers
+              $pw=''; $pw+=$upper[(Get-Random -Minimum 0 -Maximum $upper.Length)]; $pw+=$lower[(Get-Random -Minimum 0 -Maximum $lower.Length)]; $pw+=$numbers[(Get-Random -Minimum 0 -Maximum $numbers.Length)]
+              for($i=1;$i -le 5;$i++) { $pw+=$all[(Get-Random -Minimum 0 -Maximum $all.Length)] }
+              return -join ($pw.ToCharArray() | Sort-Object { Get-Random })
+          }
+          if($env:CUSTOM_RDP_PASS){ $matKhau=$env:CUSTOM_RDP_PASS } else { $matKhau=New-PremiumPassword }
+          $securePass=ConvertTo-SecureString $matKhau -AsPlainText -Force
+          Remove-LocalUser -Name "LongDay2203" -ErrorAction SilentlyContinue
+          New-LocalUser -Name "LongDay2203" -Password $securePass -AccountNeverExpires -Description "LongDay Premium User"
+          Enable-LocalUser -Name "LongDay2203"
+          Add-LocalGroupMember -Group "Administrators" -Member "LongDay2203"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "LongDay2203"
+          echo "RDP_USER=LongDay2203" >> $env:GITHUB_ENV
+          echo "RDP_PASS=$matKhau" >> $env:GITHUB_ENV
+          echo "$matKhau" > $env:TEMP\rdp_password.txt
+          Write-Host "✅ Tài khoản LongDay2203 đã sẵn sàng" -ForegroundColor Green
+
+      # SET WALLPAPER
+      - name: 🖼️ Set RDP Wallpaper
+        run: |
+          Write-Host "🔄 Đang tải và đổi hình nền RDP..." -ForegroundColor Cyan
+          $url="https://raw.githubusercontent.com/truongcongdanh542013-art/-i/232a55d5596db3f6f78d22423e2e7353e13dca2c/DF651AEC-04F3-401D-899D-E1D540A1B488.jpeg"
+          $path="$env:TEMP\wallpaper.jpg"
+          [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
+          Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing -ErrorAction Stop
+          $rdpUser="LongDay2203"
+          $sid=(Get-LocalUser $rdpUser).SID.Value
+          $regPath="HKU\$sid\Control Panel\Desktop"
+          New-ItemProperty -Path $regPath -Name Wallpaper -PropertyType String -Value $path -Force
+          Write-Host "✅ Wallpaper đã set cho user $rdpUser" -ForegroundColor Green
+          Write-Host "🎉 Hình nền RDP đã cập nhật, sẽ hiển thị khi user login!" -ForegroundColor Cyan
+
+      # TAILSCALE
+      - name: 🌐 THIẾT LẬP MẠNG PREMIUM
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          Write-Host "🌐 ĐANG THIẾT LẬP KẾT NỐI MẠNG" -ForegroundColor Yellow
+          $msiPath="$env:TEMP\tailscale-premium.msi"
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile $msiPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$msiPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $msiPath -Force
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=$env:TAILSCALE_AUTH_KEY --hostname=LongDay-$env:GITHUB_RUN_ID --accept-routes --accept-dns --reset
+          $ip=$null
+          for($i=0;$i -lt 20;$i++) {
+              $ip=& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              if($ip -match '^\d+\.\d+\.\d+\.\d+$'){ echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV; break }
+              Start-Sleep -Seconds 3
+          }
+          if(-not $ip){ echo "TAILSCALE_IP=localhost" >> $env:GITHUB_ENV }
+
+      # THÔNG TIN KẾT NỐI
+      - name: 🎉 THÔNG TIN KẾT NỐI
+        run: |
+          $matKhau=Get-Content $env:TEMP\rdp_password.txt
+          $durationInput="${{ github.event.inputs.duration }}"
+          switch($durationInput){ "1h" {$totalMinutes=60;$displayTime="1 giờ"} "3h" {$totalMinutes=180;$displayTime="3 giờ"} "5h40m" {$totalMinutes=340;$displayTime="5 giờ 40 phút"} default {$totalMinutes=340;$displayTime="5 giờ 40 phút"} }
+          $timeZone=[System.TimeZoneInfo]::FindSystemTimeZoneById("SE Asia Standard Time")
+          $start=[System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(),$timeZone)
+          $end=$start.AddMinutes($totalMinutes)
+          Write-Host "🌐 IP: $env:TAILSCALE_IP | User: LongDay2203 | Pass: $matKhau | Thời gian: $displayTime"
+
+      # DUY TRÌ PHIÊN
+      - name: ⏳ DUY TRÌ PHIÊN LÀM VIỆC
+        run: |
+          $totalMinutes=[int]$env:TOTAL_MINUTES
+          $timeZone=[System.TimeZoneInfo]::FindSystemTimeZoneById("SE Asia Standard Time")
+          $start=[System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(),$timeZone)
+          $end=$start.AddMinutes($totalMinutes)
+          do {
+              $now=[System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(),$timeZone)
+              $remain=$end-$now
+              $h=[math]::Max(0,[math]::Floor($remain.TotalHours))
+              $m=[math]::Max(0,[math]::Floor($remain.TotalMinutes%60))
+              $s=[math]::Max(0,[math]::Floor($remain.TotalSeconds%60))
+              Write-Host "`r⏳ Thời gian còn lại: $h giờ $m phút $s giây" -NoNewline -ForegroundColor Cyan
+              Start-Sleep -Seconds 5
+          } while($remain.TotalSeconds -gt 0)
+          Write-Host "`n🎯 HẾT THỜI GIAN — TỰ ĐỘNG DỪNG!" -ForegroundColor Red
+
+      # DỌN DẸP
+      - name: 🧹 DỌN DẸP HỆ THỐNG
+        if: always()
+        run: |
+          $steps=@(
+            @{Name="Xóa file password"; Script={Remove-Item "$env:TEMP\rdp_password.txt" -ErrorAction SilentlyContinue}},
+            @{Name="Vô hiệu hóa user"; Script={Disable-LocalUser -Name "LongDay2203" -ErrorAction SilentlyContinue}},
+            @{Name="Đóng kết nối Tailscale"; Script={& "$env:ProgramFiles\Tailscale\tailscale.exe" down --accept-risk=all -ErrorAction SilentlyContinue}},
+            @{Name="Xóa rule firewall"; Script={netsh advfirewall firewall delete rule name="RDP-Premium" -ErrorAction SilentlyContinue; netsh advfirewall firewall delete rule name="RDP-Premium-Out" -ErrorAction SilentlyContinue}},
+            @{Name="Khôi phục RDP"; Script={Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 1 -Force -ErrorAction SilentlyContinue; Stop-Service -Name TermService -Force -ErrorAction SilentlyContinue}}
+          )
+          foreach($step in $steps){ Write-Host "│ 🗑️  $($step.Name)..." -NoNewline -ForegroundColor Gray; try{& $step.Script; Write-Host "`r│ ✅ $($step.Name)" -ForegroundColor Green} catch{Write-Host "`r│ ⚠️  $($step.Name) - Đã xử lý an toàn" -ForegroundColor Yellow}; Start-Sleep -Milliseconds 300 }
+          Write-Host "🎉 DỌN DẸP HOÀN TẤT! HẸN GẶP LẠI 👋" -ForegroundColor Green
