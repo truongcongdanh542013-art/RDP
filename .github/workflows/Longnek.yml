@@ -1,0 +1,100 @@
+name: 🚀 LongVPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: '🕐 Thời gian sử dụng'
+        required: false
+        default: '5h40m'
+        type: choice
+        options:
+        - '1h'
+        - '3h'
+        - '5h40m'
+
+jobs:
+  Premium-RDP-Setup:
+    runs-on: windows-latest
+    timeout-minutes: 340
+
+    steps:
+      - name: 🎯 KHỞI ĐỘNG HỆ THỐNG
+        run: |
+          Write-Host "`n🤖 Longday SERVER" -ForegroundColor Yellow
+          Write-Host "⚡ Powered by AIL" -ForegroundColor Green
+          Write-Host "🕒 Thời gian: ${{ github.event.inputs.duration }}" -ForegroundColor Magenta
+
+      - name: 🔧 CẤU HÌNH HỆ THỐNG
+        run: |
+          try { Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force } catch {}
+          try { Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force } catch {}
+          try { netsh advfirewall firewall add rule name="RDP-Premium" dir=in action=allow protocol=TCP localport=3389 profile=any } catch {}
+          try { netsh advfirewall firewall add rule name="RDP-Premium-Out" dir=out action=allow protocol=TCP localport=3389 profile=any } catch {}
+          try { Set-Service -Name TermService -StartupType Automatic; Start-Service TermService } catch {}
+
+      - name: 👤 TẠO USER PREMIUM
+        run: |
+          function New-PremiumPassword {
+              $upper='ABCDEFGHJKLMNPQRSTUVWXYZ'; $lower='abcdefghijkmnpqrstuvwxyz'; $numbers='23456789'; $all=$upper+$lower+$numbers
+              $pw=''; $pw+=$upper[(Get-Random -Minimum 0 -Maximum $upper.Length)]; $pw+=$lower[(Get-Random -Minimum 0 -Maximum $lower.Length)]; $pw+=$numbers[(Get-Random -Minimum 0 -Maximum $numbers.Length)]
+              for ($i=1;$i -le 5;$i++) { $pw+=$all[(Get-Random -Minimum 0 -Maximum $all.Length)] }
+              return -join ($pw.ToCharArray() | Sort-Object { Get-Random })
+          }
+          $matKhau = if($env:CUSTOM_RDP_PASS){$env:CUSTOM_RDP_PASS}else{New-PremiumPassword}
+          $securePass = ConvertTo-SecureString $matKhau -AsPlainText -Force
+          try { Remove-LocalUser -Name "LongDay2203" -ErrorAction SilentlyContinue } catch {}
+          try { New-LocalUser -Name "LongDay2203" -Password $securePass -AccountNeverExpires -Description "LongDay Premium User"; Add-LocalGroupMember -Group "Administrators" -Member "LongDay2203"; Add-LocalGroupMember -Group "Remote Desktop Users" -Member "LongDay2203" } catch {}
+          echo "RDP_USER=LongDay2203" >> $env:GITHUB_ENV
+          echo "RDP_PASS=$matKhau" >> $env:GITHUB_ENV
+          echo "$matKhau" > $env:TEMP\rdp_password.txt
+          Write-Host "✅ Tạo user LongDay2203 thành công"
+
+      - name: 🖼️ SET WALLPAPER AN TOÀN
+        shell: powershell
+        run: |
+          $url = "https://raw.githubusercontent.com/truongcongdanh542013-art/-i/232a55d5596db3f6f78d22423e2e7353e13dca2c/DF651AEC-04F3-401D-899D-E1D540A1B488.jpeg"
+          $path = "C:\Users\Public\wallpaper.jpg"
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          try { Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing -ErrorAction Stop; Write-Host "✅ Tải ảnh thành công" } catch { Write-Host "❌ Không tải được ảnh"; exit 1 }
+          Add-Type @"
+          using System.Runtime.InteropServices;
+          public class Wallpaper { [DllImport("user32.dll",SetLastError=true)] public static extern bool SystemParametersInfo(int uAction,int uParam,string lpvParam,int fuWinIni); }
+"@
+          [Wallpaper]::SystemParametersInfo(20,0,$path,3)
+          Write-Host "✅ Wallpaper đã áp dụng cho session hiện tại"
+
+      - name: 🌐 CÀI TAILSCALE
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          try {
+              $msi="$env:TEMP\tailscale.msi"
+              Invoke-WebRequest "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile $msi
+              Start-Process msiexec.exe -ArgumentList "/i","`"$msi`"","/quiet","/norestart" -Wait
+              Remove-Item $msi -Force
+          } catch {}
+          try { & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=$env:TAILSCALE_AUTH_KEY --hostname=LongDay-$env:GITHUB_RUN_ID --accept-routes --accept-dns --reset } catch {}
+          $ip=$(& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 | Select-String '\d+\.\d+\.\d+\.\d+') -replace '\s+',''
+          if($ip){echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV}else{echo "TAILSCALE_IP=localhost" >> $env:GITHUB_ENV}
+
+      - name: 🎉 THÔNG TIN KẾT NỐI
+        run: |
+          $matKhau=Get-Content $env:TEMP\rdp_password.txt
+          $ip=$env:TAILSCALE_IP
+          Write-Host "RDP USER: LongDay2203, PASS: $matKhau, IP: $ip, Port: 3389" -ForegroundColor Green
+
+      - name: ⏳ DUY TRÌ PHIÊN
+        run: |
+          $totalMinutes = 340
+          Start-Sleep -Seconds ($totalMinutes*60)
+
+      - name: 🧹 DỌN DẸP
+        if: always()
+        run: |
+          try { Disable-LocalUser -Name "LongDay2203" } catch {}
+          try { & "$env:ProgramFiles\Tailscale\tailscale.exe" down --accept-risk=all } catch {}
+          try { netsh advfirewall firewall delete rule name="RDP-Premium" } catch {}
+          try { netsh advfirewall firewall delete rule name="RDP-Premium-Out" } catch {}
+          try { Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 1 -Force } catch {}
+          Write-Host "🎉 Dọn dẹp hoàn tất"
