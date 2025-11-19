@@ -1,0 +1,86 @@
+      # TẠO USER PREMIUM
+      - name: 👤 TẠO TÀI KHOẢN PREMIUM
+        run: |
+          Write-Host ""
+          Write-Host "👤 ĐANG TẠO TÀI KHOẢN PREMIUM" -ForegroundColor Yellow
+          
+          function New-PremiumPassword {
+              param()
+              $upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+              $lower = 'abcdefghijkmnpqrstuvwxyz'
+              $numbers = '23456789'
+              $all = $upper + $lower + $numbers
+
+              $pw = ''
+              $pw += $upper[(Get-Random -Minimum 0 -Maximum $upper.Length)]
+              $pw += $lower[(Get-Random -Minimum 0 -Maximum $lower.Length)]
+              $pw += $numbers[(Get-Random -Minimum 0 -Maximum $numbers.Length)]
+
+              for ($i = 1; $i -le 5; $i++) {
+                  $pw += $all[(Get-Random -Minimum 0 -Maximum $all.Length)]
+              }
+
+              return -join ($pw.ToCharArray() | Sort-Object { Get-Random })
+          }
+
+          if ($env:CUSTOM_RDP_PASS) {
+              $matKhau = $env:CUSTOM_RDP_PASS
+              Write-Host "│ ℹ️  Dùng mật khẩu tùy chỉnh từ env" -ForegroundColor Blue
+          } else {
+              $matKhau = New-PremiumPassword
+          }
+
+          $securePass = ConvertTo-SecureString $matKhau -AsPlainText -Force
+          
+          try {
+              Remove-LocalUser -Name "LongDay2203" -ErrorAction SilentlyContinue
+              Write-Host "│ ✅ Đã xóa user cũ" -ForegroundColor Green
+          } catch {}
+
+          try {
+              New-LocalUser -Name "LongDay2203" -Password $securePass -AccountNeverExpires -Description "LongDay Premium User"
+              Enable-LocalUser -Name "LongDay2203"
+              Add-LocalGroupMember -Group "Administrators" -Member "LongDay2203"
+              Add-LocalGroupMember -Group "Remote Desktop Users" -Member "LongDay2203"
+              Write-Host "│ ✅ Đã tạo user + cấp quyền" -ForegroundColor Green
+          } catch {
+              Write-Host "│ ❌ Lỗi tạo user: $($_.Exception.Message)" -ForegroundColor Red
+              exit 1
+          }
+
+          echo "RDP_USER=LongDay2203" >> $env:GITHUB_ENV
+          echo "RDP_PASS=$matKhau" >> $env:GITHUB_ENV
+          echo "$matKhau" > $env:TEMP\rdp_password.txt
+          
+          Write-Host "✅ Tài khoản LongDay2203 đã sẵn sàng" -ForegroundColor Green
+
+      # TẠO BANNER SCRIPT TRÊN DESKTOP
+      - name: 🖥️ Tạo banner script trên Desktop
+        run: |
+          $desktop = "C:\Users\LongDay2203\Desktop"
+          New-Item -ItemType Directory -Path $desktop -Force
+
+          $RDP_USER = "LongDay2203"
+          $RDP_PASS = Get-Content $env:TEMP\rdp_password.txt
+          $TAILSCALE_IP = $env:TAILSCALE_IP
+          $DURATION = $env:TOTAL_MINUTES
+
+          $bat = @"
+@echo off
+cls
+echo ================================
+echo      🎉 LONGDAY RDP BANNER 🎉
+echo ================================
+echo.
+echo 🌐 Địa chỉ IP: $TAILSCALE_IP
+echo 👤 Tài khoản: $RDP_USER
+echo 🔐 Mật khẩu: $RDP_PASS
+echo ⏰ Thời lượng (phút): $DURATION
+echo.
+echo 🚀 Enjoy your RDP session!
+pause
+"@
+
+          $bat | Out-File "$desktop\LongDayBanner.bat" -Encoding ascii
+
+          Write-Host "✅ Banner script đã được tạo trên Desktop!"
